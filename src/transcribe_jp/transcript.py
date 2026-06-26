@@ -23,6 +23,16 @@ class Segment:
 
 
 @dataclass(frozen=True)
+class SrtOptions:
+    """Tunable thresholds for grouping fragments into .srt cues."""
+
+    max_chars: int = SRT_MAX_CHARS
+    max_duration: float = SRT_MAX_DURATION
+    max_gap: float = SRT_MAX_GAP
+    line_width: int = SRT_LINE_WIDTH
+
+
+@dataclass(frozen=True)
 class Transcript:
     text: str
     language: str = "ja"
@@ -60,10 +70,17 @@ def transcript_from_backend_output(
     return Transcript(text=text, language=language, model=model, segments=segments, raw=output)
 
 
-def format_srt(transcript: Transcript) -> str:
+def format_srt(transcript: Transcript, options: SrtOptions | None = None) -> str:
+    options = options or SrtOptions()
+    grouped = group_segments_for_srt(
+        transcript.segments,
+        max_chars=options.max_chars,
+        max_duration=options.max_duration,
+        max_gap=options.max_gap,
+    )
     blocks = []
-    for index, segment in enumerate(group_segments_for_srt(transcript.segments), start=1):
-        text = _wrap_for_display(segment.text)
+    for index, segment in enumerate(grouped, start=1):
+        text = _wrap_for_display(segment.text, width=options.line_width)
         if not text:
             continue
         blocks.append(
@@ -145,7 +162,11 @@ def _wrap_for_display(text: str, width: int = SRT_LINE_WIDTH) -> str:
     return "\n".join(lines)
 
 
-def write_transcript(transcript: Transcript, output_base: Path) -> dict[str, Path]:
+def write_transcript(
+    transcript: Transcript,
+    output_base: Path,
+    srt_options: SrtOptions | None = None,
+) -> dict[str, Path]:
     output_base.parent.mkdir(parents=True, exist_ok=True)
     paths = {
         "txt": output_base.with_suffix(".txt"),
@@ -158,7 +179,7 @@ def write_transcript(transcript: Transcript, output_base: Path) -> dict[str, Pat
         json.dumps(asdict(transcript), ensure_ascii=False, indent=2) + "\n",
         encoding="utf-8",
     )
-    paths["srt"].write_text(format_srt(transcript), encoding="utf-8")
+    paths["srt"].write_text(format_srt(transcript, srt_options), encoding="utf-8")
     return paths
 
 

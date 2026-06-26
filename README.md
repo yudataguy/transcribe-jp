@@ -86,5 +86,6 @@ python3 -m compileall src tests
 - The `transformers` backend intentionally uses Qwen's `qwen-asr` Python package. Do not replace it with generic `transformers.pipeline`; generic Transformers releases may not recognize the `qwen3_asr` architecture yet.
 - The `transformers` backend splits long audio into silence-aligned windows (`--window-seconds`, default 60) and shows a progress bar. Each window yields a coarse `.srt` cue by default.
 - For word/phrase-level `.srt` timestamps, pass `--forced-aligner` (loads a second ~0.6B model, e.g. `Qwen/Qwen3-ForcedAligner-0.6B`). Without it, cues are one-per-window.
+- Aligner fragments are merged into sentence-length cues. Tune the grouping with `--srt-max-chars` (default 36), `--srt-max-duration` (6s), `--srt-max-gap` (1s), and `--srt-line-width` (21).
 - If you still hit CUDA out-of-memory, lower `--max-batch-size` to 1 and/or `--window-seconds`, and set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 - The first real run on the GPU machine will download model weights through Hugging Face unless they are already cached.

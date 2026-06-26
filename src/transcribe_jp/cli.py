@@ -13,7 +13,14 @@ from transcribe_jp.config import (
     TranscriptionConfig,
 )
 from transcribe_jp.media import build_audio_path, build_ffmpeg_command, build_output_base, extract_audio
-from transcribe_jp.transcript import write_transcript
+from transcribe_jp.transcript import (
+    SRT_MAX_CHARS,
+    SRT_MAX_DURATION,
+    SRT_MAX_GAP,
+    SRT_LINE_WIDTH,
+    SrtOptions,
+    write_transcript,
+)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -71,6 +78,31 @@ def build_parser() -> argparse.ArgumentParser:
             "coarse per-window cues."
         ),
     )
+    srt_group = parser.add_argument_group("subtitle (.srt) grouping")
+    srt_group.add_argument(
+        "--srt-max-chars",
+        type=int,
+        default=SRT_MAX_CHARS,
+        help="Max characters before a cue is broken (default: %(default)s).",
+    )
+    srt_group.add_argument(
+        "--srt-max-duration",
+        type=float,
+        default=SRT_MAX_DURATION,
+        help="Max on-screen seconds per cue (default: %(default)s).",
+    )
+    srt_group.add_argument(
+        "--srt-max-gap",
+        type=float,
+        default=SRT_MAX_GAP,
+        help="Pause in seconds that forces a new cue (default: %(default)s).",
+    )
+    srt_group.add_argument(
+        "--srt-line-width",
+        type=int,
+        default=SRT_LINE_WIDTH,
+        help="Wrap cue text to this many characters per line (default: %(default)s).",
+    )
     parser.add_argument("--keep-audio", action="store_true", help="Keep extracted WAV audio.")
     parser.add_argument("--dry-run", action="store_true", help="Print planned commands and exit.")
     return parser
@@ -92,6 +124,13 @@ def main(argv: list[str] | None = None) -> int:
         forced_aligner=args.forced_aligner,
     )
 
+    srt_options = SrtOptions(
+        max_chars=args.srt_max_chars,
+        max_duration=args.srt_max_duration,
+        max_gap=args.srt_max_gap,
+        line_width=args.srt_line_width,
+    )
+
     media_path = args.media.expanduser()
     audio_path = build_audio_path(media_path, config.output_dir)
     output_base = build_output_base(media_path, config.output_dir)
@@ -105,7 +144,7 @@ def main(argv: list[str] | None = None) -> int:
 
     extract_audio(media_path, audio_path)
     transcript = transcribe_audio(audio_path, config)
-    written = write_transcript(transcript, output_base)
+    written = write_transcript(transcript, output_base, srt_options)
 
     if not config.keep_audio:
         audio_path.unlink(missing_ok=True)
