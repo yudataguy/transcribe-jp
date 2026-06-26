@@ -58,17 +58,32 @@ def _run_transformers(audio_path: Path, config: TranscriptionConfig) -> dict[str
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is not available. Run this backend on an NVIDIA GPU machine.")
 
+    # TF32 matmul is a near-free speedup on Ampere+ GPUs (A10/A100) with
+    # negligible accuracy impact for inference.
+    torch.backends.cuda.matmul.allow_tf32 = True
+    torch.backends.cudnn.allow_tf32 = True
+
     model_kwargs: dict[str, Any] = dict(
         dtype=torch.bfloat16,
         device_map="cuda:0",
         max_inference_batch_size=config.max_batch_size,
         max_new_tokens=1024,
+        attn_implementation=config.attn_implementation,
     )
     if config.forced_aligner:
         # Loads a second model (~0.6B) that produces word/phrase-level
         # timestamps, enabling fine-grained .srt cues.
         model_kwargs["forced_aligner"] = config.forced_aligner
-    model = Qwen3ASRModel.from_pretrained(config.model, **model_kwargs)
+    try:
+        model = Qwen3ASRModel.from_pretrained(config.model, **model_kwargs)
+    except ImportError as exc:
+        if config.attn_implementation == "flash_attention_2":
+            raise RuntimeError(
+                "flash_attention_2 requires the flash-attn package: "
+                "pip install flash-attn --no-build-isolation. "
+                "Or rerun with --attn-impl sdpa."
+            ) from exc
+        raise
 
     audio, sample_rate = sf.read(str(audio_path), dtype="float32")
     if audio.ndim > 1:

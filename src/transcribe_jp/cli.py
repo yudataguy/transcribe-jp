@@ -5,6 +5,7 @@ from pathlib import Path
 
 from transcribe_jp.backends import transcribe_audio
 from transcribe_jp.config import (
+    DEFAULT_ATTN_IMPL,
     DEFAULT_FORCED_ALIGNER,
     DEFAULT_LANGUAGE,
     DEFAULT_MAX_BATCH_SIZE,
@@ -103,6 +104,16 @@ def build_parser() -> argparse.ArgumentParser:
         default=SRT_LINE_WIDTH,
         help="Wrap cue text to this many characters per line (default: %(default)s).",
     )
+    parser.add_argument(
+        "--attn-impl",
+        choices=("sdpa", "flash_attention_2", "eager"),
+        default=DEFAULT_ATTN_IMPL,
+        help=(
+            "Attention kernel for the transformers backend. flash_attention_2 "
+            "is faster and lighter on Ampere+ GPUs but requires the flash-attn "
+            "package (default: %(default)s)."
+        ),
+    )
     parser.add_argument("--keep-audio", action="store_true", help="Keep extracted WAV audio.")
     parser.add_argument("--dry-run", action="store_true", help="Print planned commands and exit.")
     return parser
@@ -122,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
         max_batch_size=args.max_batch_size,
         window_seconds=args.window_seconds,
         forced_aligner=args.forced_aligner,
+        attn_implementation=args.attn_impl,
     )
 
     srt_options = SrtOptions(
@@ -168,6 +180,7 @@ def _print_dry_run(
     print(f"max_batch_size: {config.max_batch_size}")
     print(f"window_seconds: {config.window_seconds}")
     print(f"forced_aligner: {config.forced_aligner or '(disabled)'}")
+    print(f"attn_implementation: {config.attn_implementation}")
     print(f"audio: {audio_path}")
     print("ffmpeg:")
     print("  " + " ".join(build_ffmpeg_command(media_path, audio_path)))

@@ -89,3 +89,16 @@ python3 -m compileall src tests
 - Aligner fragments are merged into sentence-length cues. Tune the grouping with `--srt-max-chars` (default 36), `--srt-max-duration` (6s), `--srt-max-gap` (1s), and `--srt-line-width` (21).
 - If you still hit CUDA out-of-memory, lower `--max-batch-size` to 1 and/or `--window-seconds`, and set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 - The first real run on the GPU machine will download model weights through Hugging Face unless they are already cached.
+
+## Speed Tuning
+
+Throughput is mostly bounded by how much of the GPU you use. Levers, by impact:
+
+- **Raise `--max-batch-size`.** It was lowered to 1 only to fit a 22 GB A10. More VRAM means more parallel chunks:
+  - A100 40/80 GB: try `--max-batch-size 16` (or 32 on 80 GB) with `--window-seconds 180`.
+  - A10 22 GB: `--max-batch-size 4` without the aligner, `2` with it.
+- **Use FlashAttention-2:** `pip install flash-attn --no-build-isolation`, then add `--attn-impl flash_attention_2`. Faster and lighter than the default `sdpa`, which lets you push batch size higher.
+- **Drop `--forced-aligner` when you don't need word-level timing** — it runs a second model pass per window (~2x cost).
+- **Bigger `--window-seconds`** means fewer per-call overheads; combine with FlashAttention-2 so the longer sequences still fit.
+- TF32 matmul is enabled automatically on the transformers backend (free on Ampere+).
+- For maximum throughput on an A100, the `qwen-asr` package also ships a vLLM path (`pip install "qwen-asr[vllm]"`); wiring it up is a larger change but offers the biggest gains.
