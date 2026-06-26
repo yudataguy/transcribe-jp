@@ -18,6 +18,7 @@ gpu = [
   "qwen-asr",
   "soundfile>=0.12",
   "torch>=2.3",
+  "tqdm>=4.66",
 ]
 
 [project.scripts]

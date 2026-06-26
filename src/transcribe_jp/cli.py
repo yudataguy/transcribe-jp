@@ -8,6 +8,7 @@ from transcribe_jp.config import (
     DEFAULT_LANGUAGE,
     DEFAULT_MAX_BATCH_SIZE,
     DEFAULT_MODEL,
+    DEFAULT_WINDOW_SECONDS,
     TranscriptionConfig,
 )
 from transcribe_jp.media import build_audio_path, build_ffmpeg_command, build_output_base, extract_audio
@@ -46,6 +47,16 @@ def build_parser() -> argparse.ArgumentParser:
             "faster throughput on larger GPUs."
         ),
     )
+    parser.add_argument(
+        "--window-seconds",
+        type=float,
+        default=DEFAULT_WINDOW_SECONDS,
+        help=(
+            "Target length of each silence-aligned audio window for the "
+            "transformers backend. Smaller windows give finer progress "
+            "granularity and lower per-window memory."
+        ),
+    )
     parser.add_argument("--keep-audio", action="store_true", help="Keep extracted WAV audio.")
     parser.add_argument("--dry-run", action="store_true", help="Print planned commands and exit.")
     return parser
@@ -63,6 +74,7 @@ def main(argv: list[str] | None = None) -> int:
         keep_audio=args.keep_audio,
         command_template=args.command_template,
         max_batch_size=args.max_batch_size,
+        window_seconds=args.window_seconds,
     )
 
     media_path = args.media.expanduser()
@@ -100,6 +112,7 @@ def _print_dry_run(
     print(f"language: {config.language}")
     print(f"backend: {config.backend}")
     print(f"max_batch_size: {config.max_batch_size}")
+    print(f"window_seconds: {config.window_seconds}")
     print(f"audio: {audio_path}")
     print("ffmpeg:")
     print("  " + " ".join(build_ffmpeg_command(media_path, audio_path)))

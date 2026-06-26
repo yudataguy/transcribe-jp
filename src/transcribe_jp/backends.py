@@ -3,7 +3,8 @@ from __future__ import annotations
 from pathlib import Path
 import shlex
 import subprocess
-from typing import Any
+import tempfile
+from typing import Any, Iterator
 
 from transcribe_jp.config import TranscriptionConfig
 from transcribe_jp.transcript import Transcript, transcript_from_backend_output
@@ -43,7 +44,10 @@ def _run_qwen_cli(audio_path: Path, config: TranscriptionConfig) -> str:
 
 def _run_transformers(audio_path: Path, config: TranscriptionConfig) -> dict[str, object]:
     try:
+        import numpy as np
+        import soundfile as sf
         import torch
+        from tqdm import tqdm
         from qwen_asr import Qwen3ASRModel
     except ImportError as exc:
         raise RuntimeError(
@@ -61,12 +65,94 @@ def _run_transformers(audio_path: Path, config: TranscriptionConfig) -> dict[str
         max_inference_batch_size=config.max_batch_size,
         max_new_tokens=1024,
     )
-    results = model.transcribe(
-        audio=str(audio_path),
-        language=_qwen_language(config.language),
-    )
-    result = results[0] if isinstance(results, list) else results
-    return _qwen_result_to_mapping(result)
+
+    audio, sample_rate = sf.read(str(audio_path), dtype="float32")
+    if audio.ndim > 1:
+        audio = audio.mean(axis=1)
+
+    windows = list(_plan_windows(audio, sample_rate, config.window_seconds, np))
+    language = _qwen_language(config.language)
+
+    texts: list[str] = []
+    segments: list[dict[str, object]] = []
+    detected_language: str | None = None
+
+    with tempfile.TemporaryDirectory(prefix="transcribe_jp_") as tmpdir:
+        for index, (start, end) in enumerate(
+            tqdm(windows, desc="Transcribing", unit="win")
+        ):
+            clip_path = Path(tmpdir) / f"window_{index:05d}.wav"
+            sf.write(str(clip_path), audio[start:end], sample_rate)
+
+            results = model.transcribe(audio=str(clip_path), language=language)
+            result = results[0] if isinstance(results, list) else results
+            mapping = _qwen_result_to_mapping(result)
+
+            offset = start / sample_rate
+            text = str(mapping.get("text", "")).strip()
+            if text:
+                texts.append(text)
+            detected_language = detected_language or mapping.get("detected_language")  # type: ignore[assignment]
+
+            window_segments = mapping.get("segments")
+            if window_segments:
+                for seg in window_segments:  # type: ignore[union-attr]
+                    segments.append(
+                        {
+                            "text": seg["text"],
+                            "start": float(seg["start"]) + offset,
+                            "end": float(seg["end"]) + offset,
+                        }
+                    )
+            elif text:
+                # No fine-grained timestamps from the model: emit one coarse
+                # segment per window so the .srt still has usable cues.
+                segments.append({"text": text, "start": offset, "end": end / sample_rate})
+
+    output: dict[str, object] = {"text": "\n".join(texts)}
+    if detected_language:
+        output["detected_language"] = detected_language
+    if segments:
+        output["segments"] = segments
+    return output
+
+
+def _plan_windows(
+    audio: Any,
+    sample_rate: int,
+    window_seconds: float,
+    np: Any,
+    search_seconds: float = 3.0,
+) -> Iterator[tuple[int, int]]:
+    """Yield (start, end) sample ranges ~window_seconds long, cut on silence.
+
+    Each target boundary is snapped to the quietest 25 ms frame within
+    +/-search_seconds, so windows break during pauses instead of mid-word.
+    """
+    total = len(audio)
+    window = max(1, int(window_seconds * sample_rate))
+    search = int(search_seconds * sample_rate)
+    frame = max(1, int(0.025 * sample_rate))
+
+    start = 0
+    while start < total:
+        ideal_end = start + window
+        if ideal_end >= total:
+            yield (start, total)
+            return
+
+        lo = max(start + frame, ideal_end - search)
+        hi = min(total, ideal_end + search)
+        region = audio[lo:hi]
+        num_frames = max(1, (hi - lo) // frame)
+        energies = [
+            float(np.sqrt(np.mean(np.square(region[j * frame : (j + 1) * frame]))))
+            for j in range(num_frames)
+        ]
+        cut = lo + int(np.argmin(energies)) * frame + frame // 2
+        cut = min(max(cut, start + frame), total)
+        yield (start, cut)
+        start = cut
 
 
 def _format_command_template(
