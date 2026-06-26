@@ -7,7 +7,7 @@ name = "transcribe-jp"
 version = "0.1.0"
 description = "Portable Japanese video transcription pipeline for Qwen3-ASR."
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "transcribe-jp maintainers" }]
 dependencies = []
@@ -15,10 +15,9 @@ dependencies = []
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
 gpu = [
-  "accelerate>=0.30",
+  "qwen-asr",
   "soundfile>=0.12",
   "torch>=2.3",
-  "transformers>=4.46",
 ]
 
 [project.scripts]

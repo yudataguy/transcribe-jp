@@ -10,12 +10,12 @@ This repo is designed so the project can be prepared on a laptop that cannot run
 - Runs Japanese ASR with `Qwen/Qwen3-ASR-1.7B`.
 - Writes `.txt`, `.json`, and `.srt` files under `outputs/`.
 - Supports two backends:
-  - `transformers` for an in-process Hugging Face Transformers pipeline.
+  - `transformers` for Qwen's `qwen-asr` package using its transformers backend.
   - `qwen-cli` for an external Qwen ASR command, with a configurable command template.
 
 ## GPU Machine Setup
 
-Use Python 3.12 on the machine that will run inference.
+Use Python 3.12 on the machine that will run inference. Qwen's package expects a fresh Python 3.12 environment; do not reuse an older Python 3.10 venv.
 
 ```bash
 cd transcribe-jp
@@ -83,5 +83,6 @@ python3 -m compileall src tests
 
 - The default model is `Qwen/Qwen3-ASR-1.7B`.
 - The default language is `ja`.
+- The `transformers` backend intentionally uses Qwen's `qwen-asr` Python package. Do not replace it with generic `transformers.pipeline`; generic Transformers releases may not recognize the `qwen3_asr` architecture yet.
 - SRT timestamps are written when the backend returns timestamped chunks or segments. If the backend returns plain text only, `.txt` and `.json` will still contain the transcript and `.srt` will be empty.
 - The first real run on the GPU machine will download model weights through Hugging Face unless they are already cached.

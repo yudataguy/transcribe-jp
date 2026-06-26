@@ -3,6 +3,7 @@ from __future__ import annotations
 from pathlib import Path
 import shlex
 import subprocess
+from typing import Any
 
 from transcribe_jp.config import TranscriptionConfig
 from transcribe_jp.transcript import Transcript, transcript_from_backend_output
@@ -43,26 +44,29 @@ def _run_qwen_cli(audio_path: Path, config: TranscriptionConfig) -> str:
 def _run_transformers(audio_path: Path, config: TranscriptionConfig) -> dict[str, object]:
     try:
         import torch
-        from transformers import pipeline
+        from qwen_asr import Qwen3ASRModel
     except ImportError as exc:
         raise RuntimeError(
-            "The transformers backend requires the gpu extra: "
+            "Qwen3-ASR requires the gpu extra and Python 3.12: "
             'python -m pip install -e ".[gpu]"'
         ) from exc
 
-    dtype = torch.float16 if torch.cuda.is_available() else torch.float32
-    device = 0 if torch.cuda.is_available() else -1
-    asr = pipeline(
-        "automatic-speech-recognition",
-        model=config.model,
-        torch_dtype=dtype,
-        device=device,
-        trust_remote_code=True,
+    if not torch.cuda.is_available():
+        raise RuntimeError("CUDA is not available. Run this backend on an NVIDIA GPU machine.")
+
+    model = Qwen3ASRModel.from_pretrained(
+        config.model,
+        dtype=torch.bfloat16,
+        device_map="cuda:0",
+        max_inference_batch_size=8,
+        max_new_tokens=1024,
     )
-    result = asr(str(audio_path), return_timestamps=True, generate_kwargs={"language": config.language})
-    if isinstance(result, dict):
-        return result
-    return {"text": str(result)}
+    results = model.transcribe(
+        audio=str(audio_path),
+        language=_qwen_language(config.language),
+    )
+    result = results[0] if isinstance(results, list) else results
+    return _qwen_result_to_mapping(result)
 
 
 def _format_command_template(
@@ -76,3 +80,50 @@ def _format_command_template(
         "language": config.language,
     }
     return shlex.split(template.format(**values))
+
+
+def _qwen_language(language: str) -> str | None:
+    languages = {
+        "auto": None,
+        "ja": "Japanese",
+        "japanese": "Japanese",
+        "en": "English",
+        "english": "English",
+        "zh": "Chinese",
+        "chinese": "Chinese",
+    }
+    return languages.get(language.lower(), language)
+
+
+def _qwen_result_to_mapping(result: Any) -> dict[str, object]:
+    text = getattr(result, "text", "")
+    language = getattr(result, "language", None)
+    timestamps = getattr(result, "time_stamps", None) or []
+    segments = []
+
+    for item in timestamps:
+        segment = _timestamp_to_segment(item)
+        if segment is not None:
+            segments.append(segment)
+
+    output: dict[str, object] = {"text": text}
+    if language:
+        output["detected_language"] = language
+    if segments:
+        output["segments"] = segments
+    return output
+
+
+def _timestamp_to_segment(item: Any) -> dict[str, object] | None:
+    text = getattr(item, "text", None)
+    start = getattr(item, "start_time", None)
+    end = getattr(item, "end_time", None)
+
+    if isinstance(item, dict):
+        text = item.get("text", text)
+        start = item.get("start_time", item.get("start", start))
+        end = item.get("end_time", item.get("end", end))
+
+    if text is None or start is None or end is None:
+        return None
+    return {"text": str(text), "start": float(start), "end": float(end)}
