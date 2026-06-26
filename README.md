@@ -46,6 +46,13 @@ full video to the GPU machine. Extract compact audio locally first:
 Defaults to Opus 16 kbps; override with `-f opus|mp3|wav` and `-b BITRATE`. Upload
 the resulting audio file and pass it to `transcribe-jp` exactly like a video.
 
+To process a whole folder at once (recurses into subdirectories, skips files
+already extracted so it is resumable):
+
+```bash
+./scripts/batch_extract_audio.sh videos/        # -> audio/*.opus
+```
+
 ## Run Transcription
 
 ```bash
@@ -70,6 +77,14 @@ transcribe-jp /path/to/video.mp4 \
 ```
 
 The placeholders available in `--command-template` are `{model}`, `{language}`, and `{audio}`.
+
+To transcribe a whole folder, use the batch runner. It recurses into
+subdirectories, skips files whose `.txt` already exists (resumable), continues
+past individual failures, and forwards anything after `--` to `transcribe-jp`:
+
+```bash
+./scripts/batch_transcribe.sh audio/ -- --max-batch-size 4 --forced-aligner
+```
 
 ## Dry Run On Any Machine
 
