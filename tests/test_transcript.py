@@ -41,6 +41,26 @@ class TranscriptTests(unittest.TestCase):
             self.assertIn('"language": "ja"', paths["json"].read_text(encoding="utf-8"))
             self.assertIn("00:00:00,000 --> 00:00:01,000", paths["srt"].read_text(encoding="utf-8"))
 
+    def test_format_srt_merges_word_fragments_into_sentence_cues(self) -> None:
+        transcript = Transcript(
+            text="今日は晴れです。明日は雨。",
+            segments=[
+                Segment(start=0.0, end=0.4, text="今日"),
+                Segment(start=0.4, end=0.7, text="は"),
+                Segment(start=0.7, end=1.2, text="晴れ"),
+                Segment(start=1.2, end=1.6, text="です。"),
+                Segment(start=3.0, end=3.4, text="明日"),
+                Segment(start=3.4, end=3.9, text="は雨。"),
+            ],
+        )
+
+        srt = format_srt(transcript)
+
+        # Fragments collapse into two sentence cues, split at the first 。
+        self.assertEqual(srt.count(" --> "), 2)
+        self.assertIn("00:00:00,000 --> 00:00:01,600\n今日は晴れです。", srt)
+        self.assertIn("明日は雨。", srt)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -6,6 +6,15 @@ from pathlib import Path
 from typing import Any
 
 
+# Subtitle grouping defaults. Fine-grained aligner timestamps are word/phrase
+# level; these merge them into readable, sentence-length .srt cues.
+SRT_MAX_CHARS = 36
+SRT_MAX_DURATION = 6.0
+SRT_MAX_GAP = 1.0
+SRT_LINE_WIDTH = 21
+_SENTENCE_ENDERS = "。．！？!?…"
+
+
 @dataclass(frozen=True)
 class Segment:
     start: float
@@ -53,14 +62,87 @@ def transcript_from_backend_output(
 
 def format_srt(transcript: Transcript) -> str:
     blocks = []
-    for index, segment in enumerate(transcript.segments, start=1):
-        text = segment.text.strip()
+    for index, segment in enumerate(group_segments_for_srt(transcript.segments), start=1):
+        text = _wrap_for_display(segment.text)
         if not text:
             continue
         blocks.append(
             f"{index}\n{_format_timestamp(segment.start)} --> {_format_timestamp(segment.end)}\n{text}"
         )
     return "\n\n".join(blocks) + ("\n" if blocks else "")
+
+
+def group_segments_for_srt(
+    segments: list[Segment],
+    *,
+    max_chars: int = SRT_MAX_CHARS,
+    max_duration: float = SRT_MAX_DURATION,
+    max_gap: float = SRT_MAX_GAP,
+) -> list[Segment]:
+    """Merge word/phrase fragments into sentence-length subtitle cues.
+
+    Fragments are accumulated until a natural break: the running text ends a
+    sentence, the pause before the next fragment exceeds ``max_gap``, or adding
+    it would exceed ``max_chars`` or ``max_duration``. Cues are only merged,
+    never split, so already-large segments pass through unchanged.
+    """
+    cues: list[Segment] = []
+    start = 0.0
+    end = 0.0
+    text = ""
+
+    for segment in segments:
+        piece = segment.text.strip()
+        if not piece:
+            continue
+        if not text:
+            start, end, text = segment.start, segment.end, piece
+            continue
+
+        merged = _join_fragment(text, piece)
+        ends_sentence = text[-1] in _SENTENCE_ENDERS
+        if (
+            ends_sentence
+            or (segment.start - end) > max_gap
+            or len(merged) > max_chars
+            or (segment.end - start) > max_duration
+        ):
+            cues.append(Segment(start=start, end=end, text=text))
+            start, end, text = segment.start, segment.end, piece
+        else:
+            text, end = merged, segment.end
+
+    if text:
+        cues.append(Segment(start=start, end=end, text=text))
+    return cues
+
+
+def _join_fragment(left: str, right: str) -> str:
+    # CJK text has no inter-word spaces; only add one between ASCII words so
+    # mixed-in latin (names, acronyms) stays readable.
+    if left[-1:].isascii() and left[-1:].isalnum() and right[:1].isascii() and right[:1].isalnum():
+        return f"{left} {right}"
+    return left + right
+
+
+def _wrap_for_display(text: str, width: int = SRT_LINE_WIDTH) -> str:
+    text = text.strip()
+    if len(text) <= width:
+        return text
+    if " " in text:
+        lines: list[str] = []
+        current = ""
+        for word in text.split(" "):
+            if current and len(current) + 1 + len(word) > width:
+                lines.append(current)
+                current = word
+            else:
+                current = f"{current} {word}" if current else word
+        if current:
+            lines.append(current)
+    else:
+        lines = [text[i : i + width] for i in range(0, len(text), width)]
+    return "\n".join(lines)
 
 
 def write_transcript(transcript: Transcript, output_base: Path) -> dict[str, Path]:
