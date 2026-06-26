@@ -58,7 +58,7 @@ def _run_transformers(audio_path: Path, config: TranscriptionConfig) -> dict[str
         config.model,
         dtype=torch.bfloat16,
         device_map="cuda:0",
-        max_inference_batch_size=8,
+        max_inference_batch_size=config.max_batch_size,
         max_new_tokens=1024,
     )
     results = model.transcribe(

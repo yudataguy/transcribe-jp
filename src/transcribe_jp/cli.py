@@ -4,7 +4,12 @@ import argparse
 from pathlib import Path
 
 from transcribe_jp.backends import transcribe_audio
-from transcribe_jp.config import DEFAULT_LANGUAGE, DEFAULT_MODEL, TranscriptionConfig
+from transcribe_jp.config import (
+    DEFAULT_LANGUAGE,
+    DEFAULT_MAX_BATCH_SIZE,
+    DEFAULT_MODEL,
+    TranscriptionConfig,
+)
 from transcribe_jp.media import build_audio_path, build_ffmpeg_command, build_output_base, extract_audio
 from transcribe_jp.transcript import write_transcript
 
@@ -31,6 +36,16 @@ def build_parser() -> argparse.ArgumentParser:
             "{model}, {language}, {audio}."
         ),
     )
+    parser.add_argument(
+        "--max-batch-size",
+        type=int,
+        default=DEFAULT_MAX_BATCH_SIZE,
+        help=(
+            "Audio chunks decoded in parallel by the transformers backend. "
+            "Lower this (e.g. 1) if you hit CUDA out-of-memory; raise it for "
+            "faster throughput on larger GPUs."
+        ),
+    )
     parser.add_argument("--keep-audio", action="store_true", help="Keep extracted WAV audio.")
     parser.add_argument("--dry-run", action="store_true", help="Print planned commands and exit.")
     return parser
@@ -47,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         backend=args.backend,
         keep_audio=args.keep_audio,
         command_template=args.command_template,
+        max_batch_size=args.max_batch_size,
     )
 
     media_path = args.media.expanduser()
@@ -83,6 +99,7 @@ def _print_dry_run(
     print(f"model: {config.model}")
     print(f"language: {config.language}")
     print(f"backend: {config.backend}")
+    print(f"max_batch_size: {config.max_batch_size}")
     print(f"audio: {audio_path}")
     print("ffmpeg:")
     print("  " + " ".join(build_ffmpeg_command(media_path, audio_path)))
