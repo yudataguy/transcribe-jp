@@ -47,7 +47,7 @@ def _run_transformers(audio_path: Path, config: TranscriptionConfig) -> dict[str
         from qwen_asr import Qwen3ASRModel
     except ImportError as exc:
         raise RuntimeError(
-            "Qwen3-ASR requires the gpu extra and Python 3.12: "
+            "Qwen3-ASR needs the gpu extra installed (Python 3.10+): "
             'python -m pip install -e ".[gpu]"'
         ) from exc
 

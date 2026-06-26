@@ -1,10 +1,16 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-PYTHON_BIN="${PYTHON:-python3.12}"
+PYTHON_BIN="${PYTHON:-python3}"
 
 if ! command -v "${PYTHON_BIN}" >/dev/null 2>&1; then
-  echo "Python 3.12 was not found. Set PYTHON=/path/to/python3.12 or install Python 3.12." >&2
+  echo "No python3 found. Set PYTHON=/path/to/python3 (3.10 or newer)." >&2
+  exit 1
+fi
+
+# qwen-asr supports Python 3.9-3.13; this project targets 3.10+.
+if ! "${PYTHON_BIN}" -c 'import sys; sys.exit(0 if sys.version_info >= (3, 10) else 1)'; then
+  echo "Python 3.10 or newer is required. Found: $(${PYTHON_BIN} --version 2>&1)" >&2
   exit 1
 fi
 

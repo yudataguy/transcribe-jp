@@ -15,7 +15,7 @@ This repo is designed so the project can be prepared on a laptop that cannot run
 
 ## GPU Machine Setup
 
-Use Python 3.12 on the machine that will run inference. Qwen's package expects a fresh Python 3.12 environment; do not reuse an older Python 3.10 venv.
+Use Python 3.10 or newer on the machine that will run inference. The `qwen-asr` package supports Python 3.9–3.13, so Lambda Cloud's default Python 3.10 works without installing a newer interpreter.
 
 ```bash
 cd transcribe-jp
