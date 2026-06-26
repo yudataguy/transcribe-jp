@@ -58,13 +58,17 @@ def _run_transformers(audio_path: Path, config: TranscriptionConfig) -> dict[str
     if not torch.cuda.is_available():
         raise RuntimeError("CUDA is not available. Run this backend on an NVIDIA GPU machine.")
 
-    model = Qwen3ASRModel.from_pretrained(
-        config.model,
+    model_kwargs: dict[str, Any] = dict(
         dtype=torch.bfloat16,
         device_map="cuda:0",
         max_inference_batch_size=config.max_batch_size,
         max_new_tokens=1024,
     )
+    if config.forced_aligner:
+        # Loads a second model (~0.6B) that produces word/phrase-level
+        # timestamps, enabling fine-grained .srt cues.
+        model_kwargs["forced_aligner"] = config.forced_aligner
+    model = Qwen3ASRModel.from_pretrained(config.model, **model_kwargs)
 
     audio, sample_rate = sf.read(str(audio_path), dtype="float32")
     if audio.ndim > 1:
@@ -84,7 +88,13 @@ def _run_transformers(audio_path: Path, config: TranscriptionConfig) -> dict[str
             clip_path = Path(tmpdir) / f"window_{index:05d}.wav"
             sf.write(str(clip_path), audio[start:end], sample_rate)
 
-            results = model.transcribe(audio=str(clip_path), language=language)
+            transcribe_kwargs: dict[str, Any] = {
+                "audio": str(clip_path),
+                "language": language,
+            }
+            if config.forced_aligner:
+                transcribe_kwargs["return_time_stamps"] = True
+            results = model.transcribe(**transcribe_kwargs)
             result = results[0] if isinstance(results, list) else results
             mapping = _qwen_result_to_mapping(result)
 

@@ -84,5 +84,7 @@ python3 -m compileall src tests
 - The default model is `Qwen/Qwen3-ASR-1.7B`.
 - The default language is `ja`.
 - The `transformers` backend intentionally uses Qwen's `qwen-asr` Python package. Do not replace it with generic `transformers.pipeline`; generic Transformers releases may not recognize the `qwen3_asr` architecture yet.
-- SRT timestamps are written when the backend returns timestamped chunks or segments. If the backend returns plain text only, `.txt` and `.json` will still contain the transcript and `.srt` will be empty.
+- The `transformers` backend splits long audio into silence-aligned windows (`--window-seconds`, default 60) and shows a progress bar. Each window yields a coarse `.srt` cue by default.
+- For word/phrase-level `.srt` timestamps, pass `--forced-aligner` (loads a second ~0.6B model, e.g. `Qwen/Qwen3-ForcedAligner-0.6B`). Without it, cues are one-per-window.
+- If you still hit CUDA out-of-memory, lower `--max-batch-size` to 1 and/or `--window-seconds`, and set `PYTORCH_CUDA_ALLOC_CONF=expandable_segments:True`.
 - The first real run on the GPU machine will download model weights through Hugging Face unless they are already cached.

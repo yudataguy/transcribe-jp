@@ -5,6 +5,7 @@ from pathlib import Path
 
 from transcribe_jp.backends import transcribe_audio
 from transcribe_jp.config import (
+    DEFAULT_FORCED_ALIGNER,
     DEFAULT_LANGUAGE,
     DEFAULT_MAX_BATCH_SIZE,
     DEFAULT_MODEL,
@@ -57,6 +58,19 @@ def build_parser() -> argparse.ArgumentParser:
             "granularity and lower per-window memory."
         ),
     )
+    parser.add_argument(
+        "--forced-aligner",
+        nargs="?",
+        const=DEFAULT_FORCED_ALIGNER,
+        default=None,
+        metavar="MODEL",
+        help=(
+            "Enable word/phrase-level .srt timestamps via a forced-aligner "
+            "model (loads a second ~0.6B model). Pass the flag alone to use "
+            f"{DEFAULT_FORCED_ALIGNER}, or supply a custom model id. Omit for "
+            "coarse per-window cues."
+        ),
+    )
     parser.add_argument("--keep-audio", action="store_true", help="Keep extracted WAV audio.")
     parser.add_argument("--dry-run", action="store_true", help="Print planned commands and exit.")
     return parser
@@ -75,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         command_template=args.command_template,
         max_batch_size=args.max_batch_size,
         window_seconds=args.window_seconds,
+        forced_aligner=args.forced_aligner,
     )
 
     media_path = args.media.expanduser()
@@ -113,6 +128,7 @@ def _print_dry_run(
     print(f"backend: {config.backend}")
     print(f"max_batch_size: {config.max_batch_size}")
     print(f"window_seconds: {config.window_seconds}")
+    print(f"forced_aligner: {config.forced_aligner or '(disabled)'}")
     print(f"audio: {audio_path}")
     print("ffmpeg:")
     print("  " + " ".join(build_ffmpeg_command(media_path, audio_path)))
