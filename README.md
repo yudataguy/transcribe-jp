@@ -39,8 +39,8 @@ The model only consumes 16 kHz mono audio, so there is no need to upload the
 full video to the GPU machine. Extract compact audio locally first:
 
 ```bash
-./scripts/extract_audio.sh videos/SDDE-652.mp4        # -> SDDE-652.opus (~100-300x smaller)
-./scripts/extract_audio.sh -f mp3 videos/SDDE-652.mp4 # -> SDDE-652.mp3
+./scripts/extract_audio.sh videos/xxx.mp4        # -> xxx.opus (~100-300x smaller)
+./scripts/extract_audio.sh -f mp3 videos/xxx.mp4 # -> xxx.mp3
 ```
 
 Defaults to Opus 16 kbps; override with `-f opus|mp3|wav` and `-b BITRATE`. Upload
