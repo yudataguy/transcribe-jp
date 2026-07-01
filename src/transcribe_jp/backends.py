@@ -96,43 +96,62 @@ def _run_transformers(audio_path: Path, config: TranscriptionConfig) -> dict[str
     segments: list[dict[str, object]] = []
     detected_language: str | None = None
 
+    # Decode windows in batches of max_batch_size. The model slices the list it
+    # receives into sub-batches of that size and runs them through the GPU in
+    # parallel, so throughput scales with batch size until the A100 saturates.
+    # Feeding one clip per call (the previous behaviour) pinned the batch to 1
+    # and left the GPU mostly idle.
+    batch_size = max(1, config.max_batch_size)
+
     with tempfile.TemporaryDirectory(prefix="transcribe_jp_") as tmpdir:
-        for index, (start, end) in enumerate(
-            tqdm(windows, desc="Transcribing", unit="win")
-        ):
-            clip_path = Path(tmpdir) / f"window_{index:05d}.wav"
-            sf.write(str(clip_path), audio[start:end], sample_rate)
+        with tqdm(total=len(windows), desc="Transcribing", unit="win") as progress:
+            for batch_start in range(0, len(windows), batch_size):
+                batch = windows[batch_start : batch_start + batch_size]
 
-            transcribe_kwargs: dict[str, Any] = {
-                "audio": str(clip_path),
-                "language": language,
-            }
-            if config.forced_aligner:
-                transcribe_kwargs["return_time_stamps"] = True
-            results = model.transcribe(**transcribe_kwargs)
-            result = results[0] if isinstance(results, list) else results
-            mapping = _qwen_result_to_mapping(result)
+                clip_paths: list[str] = []
+                for offset_index, (start, end) in enumerate(batch):
+                    index = batch_start + offset_index
+                    clip_path = Path(tmpdir) / f"window_{index:05d}.wav"
+                    sf.write(str(clip_path), audio[start:end], sample_rate)
+                    clip_paths.append(str(clip_path))
 
-            offset = start / sample_rate
-            text = str(mapping.get("text", "")).strip()
-            if text:
-                texts.append(text)
-            detected_language = detected_language or mapping.get("detected_language")  # type: ignore[assignment]
+                transcribe_kwargs: dict[str, Any] = {
+                    "audio": clip_paths,
+                    "language": language,
+                }
+                if config.forced_aligner:
+                    transcribe_kwargs["return_time_stamps"] = True
+                results = model.transcribe(**transcribe_kwargs)
+                if not isinstance(results, list):
+                    results = [results]
 
-            window_segments = mapping.get("segments")
-            if window_segments:
-                for seg in window_segments:  # type: ignore[union-attr]
-                    segments.append(
-                        {
-                            "text": seg["text"],
-                            "start": float(seg["start"]) + offset,
-                            "end": float(seg["end"]) + offset,
-                        }
-                    )
-            elif text:
-                # No fine-grained timestamps from the model: emit one coarse
-                # segment per window so the .srt still has usable cues.
-                segments.append({"text": text, "start": offset, "end": end / sample_rate})
+                for (start, end), result in zip(batch, results):
+                    mapping = _qwen_result_to_mapping(result)
+
+                    offset = start / sample_rate
+                    text = str(mapping.get("text", "")).strip()
+                    if text:
+                        texts.append(text)
+                    detected_language = detected_language or mapping.get("detected_language")  # type: ignore[assignment]
+
+                    window_segments = mapping.get("segments")
+                    if window_segments:
+                        for seg in window_segments:  # type: ignore[union-attr]
+                            segments.append(
+                                {
+                                    "text": seg["text"],
+                                    "start": float(seg["start"]) + offset,
+                                    "end": float(seg["end"]) + offset,
+                                }
+                            )
+                    elif text:
+                        # No fine-grained timestamps from the model: emit one
+                        # coarse segment per window so the .srt still has cues.
+                        segments.append(
+                            {"text": text, "start": offset, "end": end / sample_rate}
+                        )
+
+                progress.update(len(batch))
 
     output: dict[str, object] = {"text": "\n".join(texts)}
     if detected_language:
